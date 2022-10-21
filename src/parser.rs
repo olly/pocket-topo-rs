@@ -44,14 +44,10 @@ const VERSION: u8 = 0x3;
 
 pub fn parse(input: &[u8]) -> Result<Document, ParserError> {
 	let (input, _) = parse_header(input)?;
-
-	let version = input[0];
-	if version != VERSION {
-		return Err(ParserError::UnsupportedVersion(version));
-	}
+	let (input, _) = parse_version(input)?;
 
 	// TODO: remove unwrap
-	Ok(parse_internal(&input[1..]).unwrap().1)
+	Ok(parse_internal(input).unwrap().1)
 }
 
 fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
@@ -76,6 +72,17 @@ fn parse_header(input: &[u8]) -> Result<(&[u8], &[u8]), ParserError> {
 		let found = input.chunks(HEADER.len()).next().unwrap_or(b"");
 		ParserError::InvalidHeader(found)
 	})
+}
+
+fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
+	let (input, version) =
+		le_u8::<&[u8], nom::error::Error<&[u8]>>(input).map_err(|_| ParserError::UnknownError)?;
+
+	if version != VERSION {
+		return Err(ParserError::UnsupportedVersion(version));
+	}
+
+	Ok((input, version))
 }
 
 fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<()>> {
