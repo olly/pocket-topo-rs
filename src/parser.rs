@@ -56,6 +56,8 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 	let (input, references) = parse_references(input)?;
 
 	let (input, _mapping) = parse_mapping(input)?;
+	let (input, _outline) = parse_drawing(input)?;
+	let (input, _sideview) = parse_drawing(input)?;
 
 	Ok((
 		input,
@@ -85,6 +87,18 @@ fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
 	}
 
 	Ok((input, version))
+}
+
+// Drawing = {
+//   Mapping mapping
+//   Element[] elements
+//   Byte 0  // end of element list
+// }
+fn parse_drawing(input: &[u8]) -> IResult<&[u8], ()> {
+	let (input, _mapping) = parse_mapping(input)?;
+	let (input, _terminator) = tag(&[0x0])(input)?;
+
+	Ok((input, ()))
 }
 
 // Mapping = {  // least recently used scroll position and scale
