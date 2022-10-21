@@ -20,6 +20,17 @@ fn parses_default() {
 	assert_eq!(document.shots().len(), 1);
 }
 
+#[test]
+fn parses_empty() {
+	let contents = fixture("empty.top");
+
+	let document = parser::parse(&contents).expect("invalid document");
+
+	assert_eq!(document.shots().len(), 0);
+	assert_eq!(document.trips().len(), 0);
+	assert_eq!(document.references().len(), 0);
+}
+
 fn fixture(fixture: &str) -> Vec<u8> {
 	let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 	path.push("tests/fixtures");
