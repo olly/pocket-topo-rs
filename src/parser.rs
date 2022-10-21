@@ -1,4 +1,5 @@
 use nom::{
+	bytes::complete::tag,
 	multi::count,
 	number::complete::{le_i16, le_i32, le_i64, le_u16, le_u32, le_u8},
 	IResult,
@@ -38,22 +39,19 @@ pub enum ParserError<'a> {
 	UnknownError,
 }
 
-static HEADER: [u8; 3] = [b'T', b'o', b'p'];
-static VERSION: u8 = 0x3;
+const HEADER: &[u8; 3] = b"Top";
+const VERSION: u8 = 0x3;
 
-pub fn parse(contents: &[u8]) -> Result<Document, ParserError> {
-	let header = &contents[0..3];
-	if header != HEADER {
-		return Err(ParserError::InvalidHeader(header));
-	}
+pub fn parse(input: &[u8]) -> Result<Document, ParserError> {
+	let (input, _) = parse_header(input)?;
 
-	let version = contents[3];
+	let version = input[0];
 	if version != VERSION {
 		return Err(ParserError::UnsupportedVersion(version));
 	}
 
 	// TODO: remove unwrap
-	Ok(parse_internal(&contents[4..]).unwrap().1)
+	Ok(parse_internal(&input[1..]).unwrap().1)
 }
 
 fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
@@ -69,6 +67,15 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 			trips: trips.into_boxed_slice(),
 		},
 	))
+}
+
+fn parse_header(input: &[u8]) -> Result<(&[u8], &[u8]), ParserError> {
+	let result: IResult<&[u8], &[u8]> = tag(HEADER)(input);
+
+	result.map_err(|_| {
+		let found = input.chunks(HEADER.len()).next().unwrap_or(b"");
+		ParserError::InvalidHeader(found)
+	})
 }
 
 fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<()>> {
@@ -169,10 +176,10 @@ mod test {
 	use super::*;
 
 	#[test]
-	fn test_valid_header() {
-		let contents = vec![b'T', b'o', b'p', 0x3];
-		let result = parse(&contents);
-		assert!(result.is_ok());
+	fn test_parse_header() {
+		assert!(parse_header(b"Top").is_ok());
+		assert!(parse_header(b"To").is_err());
+		assert!(parse_header(b"TOP").is_err());
 	}
 
 	#[test]
