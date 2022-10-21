@@ -55,6 +55,8 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 	let (input, shots) = parse_shots(input)?;
 	let (input, references) = parse_references(input)?;
 
+	let (input, _mapping) = parse_mapping(input)?;
+
 	Ok((
 		input,
 		Document {
@@ -83,6 +85,28 @@ fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
 	}
 
 	Ok((input, version))
+}
+
+// Mapping = {  // least recently used scroll position and scale
+//   Point origin // middle of screen relative to first reference
+// 	 Int32 scale  // 10..50000
+// }
+fn parse_mapping(input: &[u8]) -> IResult<&[u8], ()> {
+	let (input, _origin) = parse_point(input)?;
+	let (input, _scale) = le_i32(input)?;
+
+	Ok((input, ()))
+}
+
+// Point = {  // world coordinates relative to first station in file
+//   Int32 x  // mm
+//   Int32 y  // mm
+// }
+fn parse_point(input: &[u8]) -> IResult<&[u8], ()> {
+	let (input, _x) = le_i32(input)?;
+	let (input, _y) = le_i32(input)?;
+
+	Ok((input, ()))
 }
 
 fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<()>> {
