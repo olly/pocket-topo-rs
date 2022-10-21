@@ -1,6 +1,6 @@
 use nom::{
 	bytes::complete::tag,
-	multi::count,
+	multi::length_count,
 	number::complete::{le_i16, le_i32, le_i64, le_u16, le_u32, le_u8},
 	IResult,
 };
@@ -86,11 +86,7 @@ fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
 }
 
 fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<()>> {
-	// length_count(le_u32, parse_shot)(input)
-
-	let length: IResult<&[u8], u32> = le_u32(input);
-	let (input, length): (_, u32) = length.unwrap_or((input, 0));
-	count(parse_shot, length as usize)(input)
+	length_count(le_u32, parse_shot)(input)
 }
 
 // Shot = {
@@ -133,11 +129,7 @@ fn parse_string(input: &[u8]) -> IResult<&[u8], ()> {
 }
 
 fn parse_references(input: &[u8]) -> IResult<&[u8], Vec<()>> {
-	// length_count(le_u32, parse_reference)(input)
-
-	let length: IResult<&[u8], u32> = le_u32(input);
-	let (input, length): (_, u32) = length.unwrap_or((input, 0));
-	count(parse_reference, length as usize)(input)
+	length_count(le_u32, parse_reference)(input)
 }
 
 // Reference = {
@@ -158,11 +150,7 @@ fn parse_reference(input: &[u8]) -> IResult<&[u8], ()> {
 }
 
 fn parse_trips(input: &[u8]) -> IResult<&[u8], Vec<()>> {
-	// length_count(le_u32, parse_trip)(input)
-
-	let length: IResult<&[u8], u32> = le_u32(input);
-	let (input, length): (_, u32) = length.unwrap_or((input, 0));
-	count(parse_trip, length as usize)(input)
+	length_count(le_u32, parse_trip)(input)
 }
 
 // Trip = {
