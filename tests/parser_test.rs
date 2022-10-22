@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
-use pocket_topo::{parser, ShotFlags, StationId};
+use pocket_topo::{parser, Shot, ShotFlags, StationId};
 
 #[test]
 fn parses_default() {
@@ -24,6 +24,7 @@ fn parses_default() {
 	assert!(!shot.flags.contains(ShotFlags::HAS_COMMENT));
 	assert_eq!(shot.roll, 0x0);
 	assert_eq!(shot.trip_index, -1);
+	assert_eq!(shot.comment, None);
 
 	assert!(shots.next().is_none());
 
@@ -48,6 +49,51 @@ fn parses_empty() {
 	assert_eq!(document.shots.len(), 0);
 	assert_eq!(document.trips.len(), 0);
 	assert_eq!(document.references.len(), 0);
+}
+
+#[test]
+fn parses_shots_with_comments() {
+	let contents = fixture("comments.top");
+
+	let document = parser::parse(&contents).expect("invalid document");
+
+	// Shots
+	let mut shots = document.shots.iter();
+	assert_eq!(shots.len(), 2);
+
+	let mut shot: &Shot;
+
+	shot = shots.next().unwrap();
+	assert_eq!(shot.from, Some(StationId::MajorMinor(1, 0)));
+	assert_eq!(shot.to, Some(StationId::MajorMinor(1, 1)));
+	assert_eq!(shot.azimuth, 1820); // 10 deg
+	assert_eq!(shot.distance, 123450); // 123.45 m
+	assert_eq!(shot.inclination, 5461); // 30 deg
+	assert!(!shot.flags.contains(ShotFlags::FLIPPED));
+	assert!(shot.flags.contains(ShotFlags::HAS_COMMENT));
+	assert_eq!(shot.roll, 0x0);
+	assert_eq!(shot.trip_index, -1);
+	assert_eq!(
+		shot.comment,
+		Some("Comment #1\r\n\r\nFrom station: 1.0 to station: 1.1\r\n123.45 / 10.0 / 30,0")
+	);
+
+	shot = shots.next().unwrap();
+	assert_eq!(shot.from, Some(StationId::MajorMinor(1, 1)));
+	assert_eq!(shot.to, Some(StationId::Plain(2)));
+	assert_eq!(shot.azimuth, 1220); // 6.7 deg
+	assert_eq!(shot.distance, 26340); // 26.340 m
+	assert_eq!(shot.inclination, 7719); // 42.4 deg
+	assert!(!shot.flags.contains(ShotFlags::FLIPPED));
+	assert!(shot.flags.contains(ShotFlags::HAS_COMMENT));
+	assert_eq!(shot.roll, 0x0);
+	assert_eq!(shot.trip_index, 0);
+	assert_eq!(
+		shot.comment,
+		Some("Comment #2\r\n\r\nfrom station: 1.1 to station 2\r\n26.340 / 6.7 / 42.4")
+	);
+
+	assert!(shots.next().is_none());
 }
 
 fn fixture(fixture: &str) -> Vec<u8> {

@@ -3,7 +3,7 @@ pub mod parser;
 use bitflags::bitflags;
 
 #[derive(Debug)]
-pub struct Shot {
+pub struct Shot<'a> {
 	pub from: Option<StationId>,
 	pub to: Option<StationId>,
 	pub azimuth: i16,
@@ -12,6 +12,7 @@ pub struct Shot {
 	pub flags: ShotFlags,
 	pub roll: u8,
 	pub trip_index: i16,
+	pub comment: Option<&'a str>,
 }
 
 bitflags! {

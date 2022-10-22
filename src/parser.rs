@@ -1,5 +1,5 @@
 use nom::{
-	bytes::complete::tag,
+	bytes::complete::{tag, take, take_while},
 	multi::length_count,
 	number::complete::{le_i16, le_i32, le_i64, le_u32, le_u8},
 	IResult,
@@ -9,9 +9,9 @@ use thiserror::Error;
 use crate::{Shot, ShotFlags, StationId};
 
 #[derive(Debug)]
-pub struct Document {
+pub struct Document<'a> {
 	pub references: Box<[()]>,
-	pub shots: Box<[Shot]>,
+	pub shots: Box<[Shot<'a>]>,
 	pub trips: Box<[()]>,
 }
 
@@ -138,7 +138,14 @@ fn parse_shot(input: &[u8]) -> IResult<&[u8], Shot> {
 	let (input, roll) = le_u8(input)?;
 	let (input, trip_index) = le_i16(input)?;
 
-	// TODO: parse conditional comment
+	let flags = ShotFlags { bits: flags };
+
+	let (input, comment) = if flags.contains(ShotFlags::HAS_COMMENT) {
+		let (input, string) = parse_string(input)?;
+		(input, Some(string))
+	} else {
+		(input, None)
+	};
 
 	let shot = Shot {
 		from,
@@ -146,9 +153,10 @@ fn parse_shot(input: &[u8]) -> IResult<&[u8], Shot> {
 		distance,
 		azimuth,
 		inclination,
-		flags: ShotFlags { bits: flags },
+		flags,
 		roll,
 		trip_index,
+		comment,
 	};
 
 	Ok((input, shot))
@@ -182,12 +190,12 @@ fn parse_station_id(input: &[u8]) -> IResult<&[u8], Option<StationId>> {
 //   Byte[] length // unsigned, encoded in 7 bit chunks, little endian, bit7 set in all but the last byte
 //   Byte[length]  // UTF8 encoded, 1 to 3 bytes per character, not 0 terminated
 // }
-fn parse_string(input: &[u8]) -> IResult<&[u8], ()> {
-	// TODO: implement
-	let (input, length) = le_u8(input)?;
-	debug_assert_eq!(length, 0);
+fn parse_string(input: &[u8]) -> IResult<&[u8], &str> {
+	let (input, length) = parse_variable_length_little_endian_int(input)?;
+	let (input, string) = take(length)(input)?;
 
-	Ok((input, ()))
+	// TODO:: remove unwrap
+	Ok((input, std::str::from_utf8(string).unwrap()))
 }
 
 fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[()]>> {
@@ -228,6 +236,31 @@ fn parse_trip(input: &[u8]) -> IResult<&[u8], ()> {
 	let (input, _declination) = le_i16(input)?;
 
 	Ok((input, ()))
+}
+
+// unsigned, encoded in 7 bit chunks, little endian, bit7 set in all but the last byte
+fn parse_variable_length_little_endian_int(input: &[u8]) -> IResult<&[u8], usize> {
+	const BIT_7_SET: u8 = 0b10000000;
+
+	let (input, bytes) = take_while(|byte| byte & BIT_7_SET == BIT_7_SET)(input)?;
+	let (input, byte) = take(1_u8)(input)?;
+
+	let mut result: usize = 0;
+	for (i, v) in bytes.iter().chain(byte.iter()).enumerate() {
+		// Convert to usize value to ensure we lose information when we shift left
+		let b = *v as usize;
+
+		// Mask to remove the continuation bit
+		let b = b & 0b01111111;
+
+		// Shift left 7 bytes for each byte of input
+		let b = b << (7 * i);
+
+		// OR exisitng result and b together
+		result |= b;
+	}
+
+	Ok((input, result))
 }
 
 #[cfg(test)]
@@ -309,5 +342,35 @@ mod test {
 
 		let (_, station_id) = parse_station_id(&[0xFF, 0xFF, 0xFF, 0xFF]).unwrap();
 		assert_eq!(station_id, Some(StationId::Plain(2147483646)));
+	}
+
+	#[test]
+	fn test_parse_variable_length_little_endian_int() {
+		let (_, result) = parse_variable_length_little_endian_int(&[0x00_u8]).unwrap();
+		assert_eq!(result, 0x0_usize);
+
+		let (input, result) = parse_variable_length_little_endian_int(&[0x00_u8, 0x00_u8]).unwrap();
+		assert_eq!(input, &[0x00_u8]);
+		assert_eq!(result, 0x0_usize);
+
+		let (_, result) = parse_variable_length_little_endian_int(&[0x2b_u8]).unwrap();
+		assert_eq!(result, 43_usize);
+
+		let (_, result) = parse_variable_length_little_endian_int(&[0b00000000_u8]).unwrap();
+		assert_eq!(result, 0_usize);
+
+		let (_, result) = parse_variable_length_little_endian_int(&[0b00000001_u8]).unwrap();
+		assert_eq!(result, 1_usize);
+
+		let (_, result) = parse_variable_length_little_endian_int(&[0b00000010_u8]).unwrap();
+		assert_eq!(result, 2_usize);
+
+		let (_, result) =
+			parse_variable_length_little_endian_int(&[0b11111111_u8, 0b00000001]).unwrap();
+		assert_eq!(result, 255_usize);
+
+		let (_, result) =
+			parse_variable_length_little_endian_int(&[0b10000000_u8, 0b00000000_u8]).unwrap();
+		assert_eq!(result, 0x0_usize);
 	}
 }
