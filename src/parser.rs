@@ -1,15 +1,17 @@
 use nom::{
 	bytes::complete::tag,
 	multi::length_count,
-	number::complete::{le_i16, le_i32, le_i64, le_u16, le_u32, le_u8},
+	number::complete::{le_i16, le_i32, le_i64, le_u32, le_u8},
 	IResult,
 };
 use thiserror::Error;
 
+use crate::{Shot, ShotFlags, StationId};
+
 #[derive(Debug)]
 pub struct Document {
 	references: Box<[()]>,
-	shots: Box<[()]>,
+	shots: Box<[Shot]>,
 	trips: Box<[()]>,
 }
 
@@ -18,7 +20,7 @@ impl Document {
 		&self.references
 	}
 
-	pub fn shots(&self) -> &[()] {
+	pub fn shots(&self) -> &[Shot] {
 		&self.shots
 	}
 
@@ -123,7 +125,7 @@ fn parse_point(input: &[u8]) -> IResult<&[u8], ()> {
 	Ok((input, ()))
 }
 
-fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<()>> {
+fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<Shot>> {
 	length_count(le_u32, parse_shot)(input)
 }
 
@@ -139,19 +141,54 @@ fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<()>> {
 // 	 if (flags & 2)
 // 	   String comment
 // }
-fn parse_shot(input: &[u8]) -> IResult<&[u8], ()> {
-	let (input, _from) = le_i32(input)?;
-	let (input, _to) = le_i32(input)?;
-	let (input, _distance) = le_i32(input)?;
-	let (input, _azimuth) = le_i16(input)?;
-	let (input, _inclination) = le_i16(input)?;
-	let (input, _flags) = le_u8(input)?;
-	let (input, _roll) = le_u8(input)?;
-	let (input, _trip_index) = le_u16(input)?;
+fn parse_shot(input: &[u8]) -> IResult<&[u8], Shot> {
+	let (input, from) = parse_station_id(input)?;
+	let (input, to) = parse_station_id(input)?;
+	let (input, distance) = le_i32(input)?;
+	let (input, azimuth) = le_i16(input)?;
+	let (input, inclination) = le_i16(input)?;
+	let (input, flags) = le_u8(input)?;
+	let (input, roll) = le_u8(input)?;
+	let (input, trip_index) = le_i16(input)?;
 
 	// TODO: parse conditional comment
 
-	Ok((input, ()))
+	let shot = Shot {
+		from,
+		to,
+		distance,
+		azimuth,
+		inclination,
+		flags: ShotFlags { bits: flags },
+		roll,
+		trip_index,
+	};
+
+	Ok((input, shot))
+}
+
+// Id = { // station identification
+//   Int32 value  // 0x80000000: undefined, <0: plain numbers + 0x80000001, >=0: major<<16|minor
+// }
+fn parse_station_id(input: &[u8]) -> IResult<&[u8], Option<StationId>> {
+	const UNDEFINED: u32 = 0b10000000000000000000000000000000;
+
+	let (input, station_id) = le_u32(input)?;
+
+	let station_id = match station_id {
+		UNDEFINED => None,
+		x if x & UNDEFINED == UNDEFINED => {
+			let x = (x ^ UNDEFINED) - 1;
+			Some(StationId::Plain(x))
+		}
+		x => {
+			let major: u16 = (x >> 16) as u16;
+			let minor: u16 = (x) as u16;
+			Some(StationId::MajorMinor(major, minor))
+		}
+	};
+
+	Ok((input, station_id))
 }
 
 // String = { // .Net string format
@@ -235,5 +272,53 @@ mod test {
 		assert_eq!(error, ParserError::UnsupportedVersion(0x2));
 
 		assert_eq!(error.to_string(), "unsupported version: 2");
+	}
+
+	#[test]
+	fn test_parse_station_id() {
+		let (_, station_id) = parse_station_id(&[0x00, 0x00, 0x00, 0x80]).unwrap();
+		assert_eq!(station_id, None);
+
+		let (_, station_id) = parse_station_id(&[0x00, 0x00, 0x01, 0x00]).unwrap();
+		assert_eq!(station_id, Some(StationId::MajorMinor(1, 0)));
+
+		let (_, station_id) = parse_station_id(&[0x01, 0x00, 0x2A, 0x00]).unwrap();
+		assert_eq!(station_id, Some(StationId::MajorMinor(42, 1)));
+
+		let (_, station_id) = parse_station_id(&[0x01, 0x00, 0x00, 0x40]).unwrap();
+		assert_eq!(station_id, Some(StationId::MajorMinor(16384, 1)));
+
+		let (_, station_id) = parse_station_id(&[0x00, 0x40, 0x0, 0x40]).unwrap();
+		assert_eq!(station_id, Some(StationId::MajorMinor(16384, 16384)));
+
+		let (_, station_id) = parse_station_id(&[0x00, 0x00, 0xFF, 0x7F]).unwrap();
+		assert_eq!(station_id, Some(StationId::MajorMinor(32767, 0)));
+
+		let (_, station_id) = parse_station_id(&[0xFF, 0xFF, 0xFF, 0x7F]).unwrap();
+		assert_eq!(station_id, Some(StationId::MajorMinor(32767, 65535)));
+
+		let (_, station_id) = parse_station_id(&[0x01, 0x00, 0x00, 0x80]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(0)));
+
+		let (_, station_id) = parse_station_id(&[0x02, 0x00, 0x00, 0x80]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(1)));
+
+		let (_, station_id) = parse_station_id(&[0x03, 0x00, 0x00, 0x80]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(2)));
+
+		let (_, station_id) = parse_station_id(&[0x04, 0x00, 0x00, 0x80]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(3)));
+
+		let (_, station_id) = parse_station_id(&[0x05, 0x00, 0x00, 0x80]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(4)));
+
+		let (_, station_id) = parse_station_id(&[0x42, 0x42, 0x0f, 0x80]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(1000001)));
+
+		let (_, station_id) = parse_station_id(&[0x00, 0xFF, 0x0F, 0x80]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(1048319)));
+
+		let (_, station_id) = parse_station_id(&[0xFF, 0xFF, 0xFF, 0xFF]).unwrap();
+		assert_eq!(station_id, Some(StationId::Plain(2147483646)));
 	}
 }
