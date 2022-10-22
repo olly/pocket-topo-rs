@@ -9,7 +9,7 @@ fn parses_default() {
 	let document = parser::parse(&contents).expect("invalid document");
 
 	// Shots
-	let mut shots = document.shots().iter();
+	let mut shots = document.shots.iter();
 	assert_eq!(shots.len(), 1);
 
 	let shot = shots.next().unwrap();
@@ -28,10 +28,10 @@ fn parses_default() {
 	assert!(shots.next().is_none());
 
 	// Trips
-	assert_eq!(document.trips().len(), 0);
+	assert_eq!(document.trips.len(), 0);
 
 	// References
-	let mut references = document.references().iter();
+	let mut references = document.references.iter();
 	assert_eq!(references.len(), 1);
 
 	let mut _reference = references.next();
@@ -45,9 +45,9 @@ fn parses_empty() {
 
 	let document = parser::parse(&contents).expect("invalid document");
 
-	assert_eq!(document.shots().len(), 0);
-	assert_eq!(document.trips().len(), 0);
-	assert_eq!(document.references().len(), 0);
+	assert_eq!(document.shots.len(), 0);
+	assert_eq!(document.trips.len(), 0);
+	assert_eq!(document.references.len(), 0);
 }
 
 fn fixture(fixture: &str) -> Vec<u8> {

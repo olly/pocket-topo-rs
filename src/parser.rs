@@ -10,23 +10,9 @@ use crate::{Shot, ShotFlags, StationId};
 
 #[derive(Debug)]
 pub struct Document {
-	references: Box<[()]>,
-	shots: Box<[Shot]>,
-	trips: Box<[()]>,
-}
-
-impl Document {
-	pub fn references(&self) -> &[()] {
-		&self.references
-	}
-
-	pub fn shots(&self) -> &[Shot] {
-		&self.shots
-	}
-
-	pub fn trips(&self) -> &[()] {
-		&self.trips
-	}
+	pub references: Box<[()]>,
+	pub shots: Box<[Shot]>,
+	pub trips: Box<[()]>,
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
