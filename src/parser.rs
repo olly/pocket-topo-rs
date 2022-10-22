@@ -50,9 +50,9 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 	Ok((
 		input,
 		Document {
-			references: references.into_boxed_slice(),
-			shots: shots.into_boxed_slice(),
-			trips: trips.into_boxed_slice(),
+			references,
+			shots,
+			trips,
 		},
 	))
 }
@@ -111,8 +111,9 @@ fn parse_point(input: &[u8]) -> IResult<&[u8], ()> {
 	Ok((input, ()))
 }
 
-fn parse_shots(input: &[u8]) -> IResult<&[u8], Vec<Shot>> {
+fn parse_shots(input: &[u8]) -> IResult<&[u8], Box<[Shot]>> {
 	length_count(le_u32, parse_shot)(input)
+		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
 
 // Shot = {
@@ -189,8 +190,9 @@ fn parse_string(input: &[u8]) -> IResult<&[u8], ()> {
 	Ok((input, ()))
 }
 
-fn parse_references(input: &[u8]) -> IResult<&[u8], Vec<()>> {
+fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[()]>> {
 	length_count(le_u32, parse_reference)(input)
+		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
 
 // Reference = {
@@ -210,8 +212,9 @@ fn parse_reference(input: &[u8]) -> IResult<&[u8], ()> {
 	Ok((input, ()))
 }
 
-fn parse_trips(input: &[u8]) -> IResult<&[u8], Vec<()>> {
+fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[()]>> {
 	length_count(le_u32, parse_trip)(input)
+		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
 
 // Trip = {
