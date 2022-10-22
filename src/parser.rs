@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use nom::{
 	bytes::complete::{tag, take, take_while},
 	multi::length_count,
@@ -75,6 +76,20 @@ fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
 	}
 
 	Ok((input, version))
+}
+
+fn parse_datetime(input: &[u8]) -> IResult<&[u8], NaiveDateTime> {
+	const NANOSECONDS: i64 = 10000000;
+	const SECONDS_FROM_DOT_NET_EPOCH_TO_UNIX_EPOCH: i64 = 62135596800;
+
+	let (input, ticks) = le_i64(input)?;
+
+	let seconds = (ticks / NANOSECONDS) - SECONDS_FROM_DOT_NET_EPOCH_TO_UNIX_EPOCH;
+	let nsecs = (ticks % NANOSECONDS) as u32;
+
+	let time = NaiveDateTime::from_timestamp(seconds, nsecs);
+
+	Ok((input, time))
 }
 
 // Drawing = {
@@ -231,7 +246,7 @@ fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[Trip]>> {
 // 	 Int16 declination  // internal angle units (full circle = 2^16)
 // }
 fn parse_trip(input: &[u8]) -> IResult<&[u8], Trip> {
-	let (input, time) = le_i64(input)?;
+	let (input, time) = parse_datetime(input)?;
 	let (input, comment) = parse_string(input)?;
 	let (input, declination) = le_i16(input)?;
 

@@ -1,5 +1,6 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
+use chrono::NaiveDate;
 use pocket_topo::{parser, Shot, ShotFlags, StationId, Trip};
 
 #[test]
@@ -109,17 +110,26 @@ fn parses_trips() {
 	let mut trip: &Trip;
 
 	trip = trips.next().unwrap();
-	assert_eq!(trip.time, 638019936000000000); // 2022-10-22
+	assert_eq!(
+		trip.time,
+		NaiveDate::from_ymd(2022, 10, 22).and_hms(0, 0, 0)
+	);
 	assert_eq!(trip.comment, "test");
 	assert_eq!(trip.declination, 628); // 3.45 deg
 
 	trip = trips.next().unwrap();
-	assert_eq!(trip.time, 638013888000000000); // 2022-10-15
+	assert_eq!(
+		trip.time,
+		NaiveDate::from_ymd(2022, 10, 15).and_hms(0, 0, 0)
+	);
 	assert_eq!(trip.comment, "2022-10-15 2.34");
 	assert_eq!(trip.declination, 426); // 2.34 deg
 
 	trip = trips.next().unwrap();
-	assert_eq!(trip.time, 638019936000000000); // 2022-10-22
+	assert_eq!(
+		trip.time,
+		NaiveDate::from_ymd(2022, 10, 22).and_hms(0, 0, 0)
+	);
 	assert_eq!(trip.comment, "2022-10-22 3.45");
 	assert_eq!(trip.declination, 628); // 3.45 deg
 

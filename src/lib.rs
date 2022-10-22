@@ -1,6 +1,7 @@
 pub mod parser;
 
 use bitflags::bitflags;
+use chrono::NaiveDateTime;
 
 #[derive(Debug)]
 pub struct Shot<'a> {
@@ -30,7 +31,7 @@ pub enum StationId {
 
 #[derive(Debug)]
 pub struct Trip<'a> {
-	pub time: i64,
+	pub time: NaiveDateTime,
 	pub comment: &'a str,
 	pub declination: i16,
 }
