@@ -6,13 +6,13 @@ use nom::{
 };
 use thiserror::Error;
 
-use crate::{Shot, ShotFlags, StationId};
+use crate::{Shot, ShotFlags, StationId, Trip};
 
 #[derive(Debug)]
 pub struct Document<'a> {
 	pub references: Box<[()]>,
 	pub shots: Box<[Shot<'a>]>,
-	pub trips: Box<[()]>,
+	pub trips: Box<[Trip<'a>]>,
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -220,7 +220,7 @@ fn parse_reference(input: &[u8]) -> IResult<&[u8], ()> {
 	Ok((input, ()))
 }
 
-fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[()]>> {
+fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[Trip]>> {
 	length_count(le_u32, parse_trip)(input)
 		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
@@ -230,12 +230,18 @@ fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[()]>> {
 // 	 String comment
 // 	 Int16 declination  // internal angle units (full circle = 2^16)
 // }
-fn parse_trip(input: &[u8]) -> IResult<&[u8], ()> {
-	let (input, _time) = le_i64(input)?;
-	let (input, _comment) = parse_string(input)?;
-	let (input, _declination) = le_i16(input)?;
+fn parse_trip(input: &[u8]) -> IResult<&[u8], Trip> {
+	let (input, time) = le_i64(input)?;
+	let (input, comment) = parse_string(input)?;
+	let (input, declination) = le_i16(input)?;
 
-	Ok((input, ()))
+	let trip = Trip {
+		time,
+		comment,
+		declination,
+	};
+
+	Ok((input, trip))
 }
 
 // unsigned, encoded in 7 bit chunks, little endian, bit7 set in all but the last byte

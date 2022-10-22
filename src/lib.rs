@@ -27,3 +27,10 @@ pub enum StationId {
 	MajorMinor(u16, u16),
 	Plain(u32),
 }
+
+#[derive(Debug)]
+pub struct Trip<'a> {
+	pub time: i64,
+	pub comment: &'a str,
+	pub declination: i16,
+}
