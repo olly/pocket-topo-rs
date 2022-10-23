@@ -23,6 +23,7 @@ pub struct CrossSection {
 
 #[derive(Debug)]
 pub struct Drawing {
+	pub mapping: Mapping,
 	pub elements: Box<[Element]>,
 }
 
@@ -30,6 +31,12 @@ pub struct Drawing {
 pub enum Element {
 	Polygon(Polygon),
 	CrossSection(CrossSection),
+}
+
+#[derive(Debug)]
+pub struct Mapping {
+	pub origin: Point,
+	pub scale: i32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

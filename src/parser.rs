@@ -9,8 +9,8 @@ use nom::{
 use thiserror::Error;
 
 use crate::{
-	Color, CrossSection, Drawing, Element, Point, Polygon, Reference, Shot, ShotFlags, StationId,
-	Trip,
+	Color, CrossSection, Drawing, Element, Mapping, Point, Polygon, Reference, Shot, ShotFlags,
+	StationId, Trip,
 };
 
 #[derive(Debug)]
@@ -18,6 +18,7 @@ pub struct Document<'a> {
 	pub references: Box<[Reference<'a>]>,
 	pub shots: Box<[Shot<'a>]>,
 	pub trips: Box<[Trip<'a>]>,
+	pub mapping: Mapping,
 	pub outline: Drawing,
 	pub sideview: Drawing,
 }
@@ -50,7 +51,7 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 	let (input, shots) = parse_shots(input)?;
 	let (input, references) = parse_references(input)?;
 
-	let (input, _mapping) = parse_mapping(input)?;
+	let (input, mapping) = parse_mapping(input)?;
 	let (input, outline) = parse_drawing(input)?;
 	let (input, sideview) = parse_drawing(input)?;
 
@@ -60,6 +61,7 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 			references,
 			shots,
 			trips,
+			mapping,
 			outline,
 			sideview,
 		},
@@ -129,10 +131,11 @@ fn parse_datetime(input: &[u8]) -> IResult<&[u8], NaiveDateTime> {
 //   Byte 0  // end of element list
 // }
 fn parse_drawing(input: &[u8]) -> IResult<&[u8], Drawing> {
-	let (input, _mapping) = parse_mapping(input)?;
+	let (input, mapping) = parse_mapping(input)?;
 	let (input, (elements, _)) = many_till(parse_element, tag([0x0_u8]))(input)?;
 
 	let drawing = Drawing {
+		mapping,
 		elements: elements.into_boxed_slice(),
 	};
 
@@ -151,11 +154,13 @@ fn parse_element(input: &[u8]) -> IResult<&[u8], Element> {
 //   Point origin // middle of screen relative to first reference
 // 	 Int32 scale  // 10..50000
 // }
-fn parse_mapping(input: &[u8]) -> IResult<&[u8], ()> {
-	let (input, _origin) = parse_point(input)?;
-	let (input, _scale) = le_i32(input)?;
+fn parse_mapping(input: &[u8]) -> IResult<&[u8], Mapping> {
+	let (input, origin) = parse_point(input)?;
+	let (input, scale) = le_i32(input)?;
 
-	Ok((input, ()))
+	let mapping = Mapping { origin, scale };
+
+	Ok((input, mapping))
 }
 
 // Point = {  // world coordinates relative to first station in file

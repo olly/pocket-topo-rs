@@ -498,6 +498,25 @@ fn parses_elements() {
 	assert!(elements.next().is_none());
 }
 
+#[test]
+fn parses_mappings() {
+	let contents = fixture("outline.top");
+
+	let document = parser::parse(&contents).expect("invalid document");
+
+	let mapping = document.mapping;
+	assert_eq!(mapping.origin, Point { x: 0, y: 0 });
+	assert_eq!(mapping.scale, 500);
+
+	let mapping = document.outline.mapping;
+	assert_eq!(mapping.origin, Point { x: 0, y: 0 });
+	assert_eq!(mapping.scale, 500);
+
+	let mapping = document.sideview.mapping;
+	assert_eq!(mapping.origin, Point { x: 0, y: 0 });
+	assert_eq!(mapping.scale, 500);
+}
+
 fn fixture(fixture: &str) -> Vec<u8> {
 	let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 	path.push("tests/fixtures");
