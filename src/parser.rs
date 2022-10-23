@@ -61,6 +61,21 @@ pub fn parse(input: &[u8]) -> Result<Document, ParseError> {
 	parse_internal(input).finish().map(|(_, document)| document)
 }
 
+// File = {
+//   Byte 'T'
+//   Byte 'o'
+//   Byte 'p'
+// 	 Byte 3  // version
+// 	 Int32 tripCount
+// 	 Trip[tripCount] trips
+// 	 Int32 shotCount
+// 	 Shot[shotCount] shots
+// 	 Int32 refCount
+// 	 Reference[refCount] references
+// 	 Mapping overview
+// 	 Drawing outline
+// 	 Drawing sideview
+// }
 fn parse_internal(input: &[u8]) -> IResult<&[u8], Document, ParseError> {
 	let (input, _) = parse_header(input)?;
 	let (input, _) = parse_version(input)?;
