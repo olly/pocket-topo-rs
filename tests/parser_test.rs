@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use chrono::NaiveDate;
-use pocket_topo::{parser, Reference, Shot, ShotFlags, StationId, Trip};
+use pocket_topo::{parser, Color, Element, Point, Reference, Shot, ShotFlags, StationId, Trip};
 
 #[test]
 fn parses_default() {
@@ -170,6 +170,332 @@ fn parses_references() {
 	assert_eq!(reference.comment, "");
 
 	assert!(references.next().is_none());
+}
+#[test]
+fn parses_elements() {
+	let contents = fixture("outline.top");
+
+	let document = parser::parse(&contents).expect("invalid document");
+
+	let mut elements = document.outline.elements.iter().rev();
+	assert_eq!(elements.len(), 24);
+
+	let mut element: &Element;
+
+	element = elements.next().unwrap();
+	let polygon = match element {
+		Element::Polygon(polygon) => polygon,
+		_ => panic!(),
+	};
+
+	assert_eq!(polygon.color, Color::Black);
+	assert_eq!(
+		polygon.points,
+		[
+			(200, -9800),
+			(600, -9800),
+			(600, -9700),
+			(800, -9700),
+			(1500, -9400),
+			(2200, -9200),
+			(2200, -9100),
+			(2500, -9000),
+			(2500, -8900),
+			(2700, -8900),
+			(4100, -7900),
+			(5600, -7200),
+			(5800, -7200),
+			(6700, -6900),
+			(7100, -6800),
+			(7400, -6800),
+			(7700, -6700),
+			(8000, -6600),
+		]
+		.into_iter()
+		.map(|(x, y)| Point { x, y })
+		.collect()
+	);
+
+	element = elements.next().unwrap();
+	let polygon = match element {
+		Element::Polygon(polygon) => polygon,
+		_ => panic!(),
+	};
+
+	assert_eq!(polygon.color, Color::Gray);
+	assert_eq!(
+		polygon.points,
+		[
+			(8200, -6400),
+			(8200, -4900),
+			(8300, -4700),
+			(8300, -4500),
+			(8400, -4200),
+			(9200, -1900),
+			(9600, -1100),
+			(9600, -900),
+			(9800, -300),
+			(9900, 100),
+			(10000, 100),
+			(10000, 300),
+			(10100, 300),
+			(10100, 1700),
+		]
+		.into_iter()
+		.map(|(x, y)| Point { x, y })
+		.collect()
+	);
+
+	element = elements.next().unwrap();
+	let polygon = match element {
+		Element::Polygon(polygon) => polygon,
+		_ => panic!(),
+	};
+
+	assert_eq!(polygon.color, Color::Brown);
+	assert_eq!(
+		polygon.points,
+		[
+			(10000, 2400),
+			(10000, 2500),
+			(9900, 2500),
+			(9500, 3600),
+			(8100, 5800),
+			(8000, 6100),
+			(7700, 6300),
+			(7700, 6500),
+			(7400, 6800),
+			(7400, 6900),
+			(7300, 6900),
+			(7300, 7000),
+			(7200, 7000),
+			(7100, 7200),
+			(6400, 7900),
+			(6300, 7900),
+			(6300, 8000),
+			(6100, 8000),
+			(6100, 8100),
+			(6000, 8100),
+			(6000, 8200),
+			(5700, 8300),
+			(5700, 8400),
+			(5600, 8400),
+			(5600, 8500),
+			(5300, 8600),
+			(5300, 8700),
+			(5000, 8700),
+			(5000, 8800),
+			(4800, 8800),
+			(4800, 8900),
+			(4600, 8900)
+		]
+		.into_iter()
+		.map(|(x, y)| Point { x, y })
+		.collect()
+	);
+
+	element = elements.next().unwrap();
+	let cross_section = match element {
+		Element::CrossSection(cross_section) => cross_section,
+		_ => panic!(),
+	};
+
+	assert_eq!(
+		cross_section.position,
+		Point {
+			x: -5700,
+			y: -15600,
+		}
+	);
+
+	assert_eq!(cross_section.station, StationId::MajorMinor(1, 0,));
+	assert_eq!(cross_section.direction, 0);
+
+	// ignore the 16 polygon elements which make up the cross-section drawing
+	for _ in 0..16 {
+		elements.next();
+	}
+
+	element = elements.next().unwrap();
+	let polygon = match element {
+		Element::Polygon(polygon) => polygon,
+		_ => panic!(),
+	};
+
+	assert_eq!(polygon.color, Color::Blue);
+	assert_eq!(
+		polygon.points,
+		[
+			(4400, 9100),
+			(1800, 9100),
+			(800, 8900),
+			(400, 8900),
+			(-100, 8800),
+			(-600, 8800),
+			(-900, 8700),
+			(-1100, 8700),
+			(-1400, 8600),
+			(-2600, 8600),
+			(-3200, 8800),
+			(-3700, 8800),
+			(-3700, 8900),
+			(-4300, 8900)
+		]
+		.into_iter()
+		.map(|(x, y)| Point { x, y })
+		.collect()
+	);
+
+	element = elements.next().unwrap();
+	let polygon = match element {
+		Element::Polygon(polygon) => polygon,
+		_ => panic!(),
+	};
+
+	assert_eq!(polygon.color, Color::Red);
+	assert_eq!(
+		polygon.points,
+		[
+			(-4500, 8800),
+			(-4500, 8200),
+			(-4800, 7700),
+			(-5100, 7000),
+			(-5200, 7000),
+			(-5200, 6800),
+			(-5300, 6800),
+			(-5400, 6500),
+			(-5500, 6500),
+			(-5500, 6400),
+			(-5600, 6400),
+			(-5600, 6300),
+			(-5700, 6300),
+			(-5800, 6100),
+			(-6500, 5400),
+			(-6600, 5200),
+			(-7700, 4100),
+			(-7800, 4100),
+			(-7800, 4000),
+			(-8000, 3900),
+			(-8100, 3700),
+			(-8200, 3700),
+			(-8200, 3600),
+			(-8300, 3600),
+			(-8300, 3400),
+			(-8400, 3400),
+			(-8400, 3300),
+			(-8500, 3300),
+			(-8500, 3200),
+			(-8600, 3200),
+			(-8600, 3100),
+			(-8700, 3100),
+			(-8700, 3000),
+			(-8800, 3000),
+			(-8800, 2800),
+			(-8900, 2800),
+			(-8900, 2700),
+			(-9000, 2700),
+			(-9000, 2500),
+			(-9100, 2500),
+			(-9200, 2200),
+			(-9300, 2200),
+			(-9300, 2100),
+			(-9500, 2100),
+			(-9500, 2000)
+		]
+		.into_iter()
+		.map(|(x, y)| Point { x, y })
+		.collect()
+	);
+
+	element = elements.next().unwrap();
+	let polygon = match element {
+		Element::Polygon(polygon) => polygon,
+		_ => panic!(),
+	};
+
+	assert_eq!(polygon.color, Color::Orange);
+	assert_eq!(
+		polygon.points,
+		[
+			(-9700, 2100),
+			(-9700, 800),
+			(-9600, 600),
+			(-9600, 300),
+			(-9500, 0),
+			(-9500, -200),
+			(-9300, -800),
+			(-9200, -1300),
+			(-8800, -2600),
+			(-8700, -3200),
+			(-8600, -3500),
+			(-8500, -3500),
+			(-8500, -3700),
+			(-8400, -3700),
+			(-8400, -3900),
+			(-8100, -4800),
+			(-8000, -5300),
+			(-7800, -6100),
+			(-7800, -6200)
+		]
+		.into_iter()
+		.map(|(x, y)| Point { x, y })
+		.collect()
+	);
+
+	element = elements.next().unwrap();
+	let polygon = match element {
+		Element::Polygon(polygon) => polygon,
+		_ => panic!(),
+	};
+
+	assert_eq!(polygon.color, Color::Green);
+	assert_eq!(
+		polygon.points,
+		[
+			(-7600, -6000),
+			(-7500, -6200),
+			(-6600, -7000),
+			(-6400, -7000),
+			(-6400, -7100),
+			(-6200, -7100),
+			(-5900, -7200),
+			(-5900, -7300),
+			(-5700, -7300),
+			(-5700, -7400),
+			(-5400, -7500),
+			(-5400, -7600),
+			(-5300, -7600),
+			(-5300, -7700),
+			(-5100, -7700),
+			(-5100, -7800),
+			(-5000, -7800),
+			(-5000, -7900),
+			(-4700, -8000),
+			(-4700, -8100),
+			(-4300, -8200),
+			(-4300, -8300),
+			(-4000, -8300),
+			(-3700, -8500),
+			(-3500, -8500),
+			(-2600, -8800),
+			(-2600, -8900),
+			(-2400, -8900),
+			(-2400, -9000),
+			(-2300, -9000),
+			(-2300, -9100),
+			(-2100, -9100),
+			(-900, -9500),
+			(-800, -9500),
+			(-800, -9600),
+			(-600, -9600),
+			(-300, -9800)
+		]
+		.into_iter()
+		.map(|(x, y)| Point { x, y })
+		.collect()
+	);
+
+	assert!(elements.next().is_none());
 }
 
 fn fixture(fixture: &str) -> Vec<u8> {

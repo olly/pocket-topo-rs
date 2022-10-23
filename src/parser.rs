@@ -1,19 +1,25 @@
 use chrono::NaiveDateTime;
 use nom::{
+	branch::alt,
 	bytes::complete::{tag, take, take_while},
-	multi::length_count,
+	multi::{length_count, many_till},
 	number::complete::{le_i16, le_i32, le_i64, le_u32, le_u8},
 	IResult,
 };
 use thiserror::Error;
 
-use crate::{Reference, Shot, ShotFlags, StationId, Trip};
+use crate::{
+	Color, CrossSection, Drawing, Element, Point, Polygon, Reference, Shot, ShotFlags, StationId,
+	Trip,
+};
 
 #[derive(Debug)]
 pub struct Document<'a> {
 	pub references: Box<[Reference<'a>]>,
 	pub shots: Box<[Shot<'a>]>,
 	pub trips: Box<[Trip<'a>]>,
+	pub outline: Drawing,
+	pub sideview: Drawing,
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -45,8 +51,8 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 	let (input, references) = parse_references(input)?;
 
 	let (input, _mapping) = parse_mapping(input)?;
-	let (input, _outline) = parse_drawing(input)?;
-	let (input, _sideview) = parse_drawing(input)?;
+	let (input, outline) = parse_drawing(input)?;
+	let (input, sideview) = parse_drawing(input)?;
 
 	Ok((
 		input,
@@ -54,6 +60,8 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 			references,
 			shots,
 			trips,
+			outline,
+			sideview,
 		},
 	))
 }
@@ -78,6 +86,29 @@ fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
 	Ok((input, version))
 }
 
+// XSectionElement = {
+//   Byte 3  // id
+// 	 Point pos  // drawing position
+// 	 Id station
+// 	 Int32 direction // -1: horizontal, >=0; projection azimuth (internal angle units)
+// }
+fn parse_cross_section(input: &[u8]) -> IResult<&[u8], Element> {
+	let (input, _) = tag([0x3_u8])(input)?;
+
+	let (input, position) = parse_point(input)?;
+	let (input, station) = parse_station_id(input)?;
+	let (input, direction) = le_i32(input)?;
+
+	// TODO: remove unwrap
+	let cross_section = Element::CrossSection(CrossSection {
+		position,
+		station: station.unwrap(),
+		direction,
+	});
+
+	Ok((input, cross_section))
+}
+
 fn parse_datetime(input: &[u8]) -> IResult<&[u8], NaiveDateTime> {
 	const NANOSECONDS: i64 = 10000000;
 	const SECONDS_FROM_DOT_NET_EPOCH_TO_UNIX_EPOCH: i64 = 62135596800;
@@ -97,11 +128,23 @@ fn parse_datetime(input: &[u8]) -> IResult<&[u8], NaiveDateTime> {
 //   Element[] elements
 //   Byte 0  // end of element list
 // }
-fn parse_drawing(input: &[u8]) -> IResult<&[u8], ()> {
+fn parse_drawing(input: &[u8]) -> IResult<&[u8], Drawing> {
 	let (input, _mapping) = parse_mapping(input)?;
-	let (input, _terminator) = tag(&[0x0])(input)?;
+	let (input, (elements, _)) = many_till(parse_element, tag([0x0_u8]))(input)?;
 
-	Ok((input, ()))
+	let drawing = Drawing {
+		elements: elements.into_boxed_slice(),
+	};
+
+	Ok((input, drawing))
+}
+
+// Element = {
+//   Byte id  // element type
+//   ...
+// }
+fn parse_element(input: &[u8]) -> IResult<&[u8], Element> {
+	alt((parse_polygon, parse_cross_section))(input)
 }
 
 // Mapping = {  // least recently used scroll position and scale
@@ -119,11 +162,45 @@ fn parse_mapping(input: &[u8]) -> IResult<&[u8], ()> {
 //   Int32 x  // mm
 //   Int32 y  // mm
 // }
-fn parse_point(input: &[u8]) -> IResult<&[u8], ()> {
-	let (input, _x) = le_i32(input)?;
-	let (input, _y) = le_i32(input)?;
+fn parse_point(input: &[u8]) -> IResult<&[u8], Point> {
+	let (input, x) = le_i32(input)?;
+	let (input, y) = le_i32(input)?;
 
-	Ok((input, ()))
+	let point = Point { x, y };
+
+	Ok((input, point))
+}
+
+// PolygonElement = {
+//   Byte 1  // id
+// 	 Int32 pointCount
+// 	 Point[pointCount] points // open polygon
+// 	 Byte color // black = 1, gray = 2, brown = 3, blue = 4; red = 5, green = 6, orange = 7
+// }
+fn parse_polygon(input: &[u8]) -> IResult<&[u8], Element> {
+	let (input, _) = tag([0x1_u8])(input)?;
+
+	let (input, points) = length_count(le_u32, parse_point)(input)?;
+	let (input, color) = le_u8(input)?;
+
+	// TODO: remove unreachable
+	let color = match color {
+		0x1_u8 => Color::Black,
+		0x2_u8 => Color::Gray,
+		0x3_u8 => Color::Brown,
+		0x4_u8 => Color::Blue,
+		0x5_u8 => Color::Red,
+		0x6_u8 => Color::Green,
+		0x7_u8 => Color::Orange,
+		_ => unimplemented!(),
+	};
+
+	let polygon = Element::Polygon(Polygon {
+		points: points.into_boxed_slice(),
+		color,
+	});
+
+	Ok((input, polygon))
 }
 
 fn parse_shots(input: &[u8]) -> IResult<&[u8], Box<[Shot]>> {

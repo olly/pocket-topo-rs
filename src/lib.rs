@@ -3,6 +3,47 @@ pub mod parser;
 use bitflags::bitflags;
 use chrono::NaiveDateTime;
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum Color {
+	Black,
+	Blue,
+	Brown,
+	Gray,
+	Green,
+	Orange,
+	Red,
+}
+
+#[derive(Debug)]
+pub struct CrossSection {
+	pub position: Point,
+	pub station: StationId,
+	pub direction: i32,
+}
+
+#[derive(Debug)]
+pub struct Drawing {
+	pub elements: Box<[Element]>,
+}
+
+#[derive(Debug)]
+pub enum Element {
+	Polygon(Polygon),
+	CrossSection(CrossSection),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Point {
+	pub x: i32,
+	pub y: i32,
+}
+
+#[derive(Debug)]
+pub struct Polygon {
+	pub points: Box<[Point]>,
+	pub color: Color,
+}
+
 #[derive(Debug)]
 pub struct Reference<'a> {
 	pub station: Option<StationId>,
