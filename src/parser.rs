@@ -4,7 +4,7 @@ use nom::{
 	bytes::complete::{tag, take, take_while},
 	multi::{length_count, many_till},
 	number::complete::{le_i16, le_i32, le_i64, le_u32, le_u8},
-	IResult,
+	Finish, IResult,
 };
 use thiserror::Error;
 
@@ -24,29 +24,46 @@ pub struct Document<'a> {
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
-pub enum ParserError<'a> {
+pub enum ParseError<'a> {
+	#[error("invalid color: {0:#04X?}")]
+	InvalidColor(u8),
+
 	#[error("invalid header: {0:?}")]
 	InvalidHeader(&'a [u8]),
+
+	#[error("undefined station")]
+	UndefinedStation,
+
+	#[error("unknown error")]
+	UnknownError,
 
 	#[error("unsupported version: {0}")]
 	UnsupportedVersion(u8),
 
-	#[error("unknown error")]
-	UnknownError,
+	#[error(transparent)]
+	Utf8Error(#[from] std::str::Utf8Error),
+}
+
+impl<'a, I> nom::error::ParseError<I> for ParseError<'a> {
+	fn from_error_kind(_input: I, _kind: nom::error::ErrorKind) -> Self {
+		Self::UnknownError
+	}
+
+	fn append(_input: I, _kind: nom::error::ErrorKind, other: Self) -> Self {
+		other
+	}
 }
 
 const HEADER: &[u8; 3] = b"Top";
 const VERSION: u8 = 0x3;
 
-pub fn parse(input: &[u8]) -> Result<Document, ParserError> {
-	let (input, _) = parse_header(input)?;
-	let (input, _) = parse_version(input)?;
-
-	// TODO: remove unwrap
-	Ok(parse_internal(input).unwrap().1)
+pub fn parse(input: &[u8]) -> Result<Document, ParseError> {
+	parse_internal(input).finish().map(|(_, document)| document)
 }
 
-fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
+fn parse_internal(input: &[u8]) -> IResult<&[u8], Document, ParseError> {
+	let (input, _) = parse_header(input)?;
+	let (input, _) = parse_version(input)?;
 	let (input, trips) = parse_trips(input)?;
 	let (input, shots) = parse_shots(input)?;
 	let (input, references) = parse_references(input)?;
@@ -68,21 +85,18 @@ fn parse_internal(input: &[u8]) -> IResult<&[u8], Document> {
 	))
 }
 
-fn parse_header(input: &[u8]) -> Result<(&[u8], &[u8]), ParserError> {
-	let result: IResult<&[u8], &[u8]> = tag(HEADER)(input);
-
-	result.map_err(|_| {
+fn parse_header(input: &[u8]) -> IResult<&[u8], &[u8], ParseError> {
+	tag(HEADER)(input).map_err(|_: nom::Err<ParseError>| {
 		let found = input.chunks(HEADER.len()).next().unwrap_or(b"");
-		ParserError::InvalidHeader(found)
+		nom::Err::Failure(ParseError::InvalidHeader(found))
 	})
 }
 
-fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
-	let (input, version) =
-		le_u8::<&[u8], nom::error::Error<&[u8]>>(input).map_err(|_| ParserError::UnknownError)?;
+fn parse_version(input: &[u8]) -> IResult<&[u8], u8, ParseError> {
+	let (input, version) = le_u8(input)?;
 
 	if version != VERSION {
-		return Err(ParserError::UnsupportedVersion(version));
+		return Err(nom::Err::Failure(ParseError::UnsupportedVersion(version)));
 	}
 
 	Ok((input, version))
@@ -94,24 +108,28 @@ fn parse_version(input: &[u8]) -> Result<(&[u8], u8), ParserError> {
 // 	 Id station
 // 	 Int32 direction // -1: horizontal, >=0; projection azimuth (internal angle units)
 // }
-fn parse_cross_section(input: &[u8]) -> IResult<&[u8], Element> {
+fn parse_cross_section(input: &[u8]) -> IResult<&[u8], Element, ParseError> {
 	let (input, _) = tag([0x3_u8])(input)?;
 
 	let (input, position) = parse_point(input)?;
 	let (input, station) = parse_station_id(input)?;
 	let (input, direction) = le_i32(input)?;
 
-	// TODO: remove unwrap
+	let station = match station {
+		Some(station) => station,
+		None => return Err(nom::Err::Error(ParseError::UndefinedStation)),
+	};
+
 	let cross_section = Element::CrossSection(CrossSection {
 		position,
-		station: station.unwrap(),
+		station,
 		direction,
 	});
 
 	Ok((input, cross_section))
 }
 
-fn parse_datetime(input: &[u8]) -> IResult<&[u8], NaiveDateTime> {
+fn parse_datetime(input: &[u8]) -> IResult<&[u8], NaiveDateTime, ParseError> {
 	const NANOSECONDS: i64 = 10000000;
 	const SECONDS_FROM_DOT_NET_EPOCH_TO_UNIX_EPOCH: i64 = 62135596800;
 
@@ -130,7 +148,7 @@ fn parse_datetime(input: &[u8]) -> IResult<&[u8], NaiveDateTime> {
 //   Element[] elements
 //   Byte 0  // end of element list
 // }
-fn parse_drawing(input: &[u8]) -> IResult<&[u8], Drawing> {
+fn parse_drawing(input: &[u8]) -> IResult<&[u8], Drawing, ParseError> {
 	let (input, mapping) = parse_mapping(input)?;
 	let (input, (elements, _)) = many_till(parse_element, tag([0x0_u8]))(input)?;
 
@@ -146,7 +164,7 @@ fn parse_drawing(input: &[u8]) -> IResult<&[u8], Drawing> {
 //   Byte id  // element type
 //   ...
 // }
-fn parse_element(input: &[u8]) -> IResult<&[u8], Element> {
+fn parse_element(input: &[u8]) -> IResult<&[u8], Element, ParseError> {
 	alt((parse_polygon, parse_cross_section))(input)
 }
 
@@ -154,7 +172,7 @@ fn parse_element(input: &[u8]) -> IResult<&[u8], Element> {
 //   Point origin // middle of screen relative to first reference
 // 	 Int32 scale  // 10..50000
 // }
-fn parse_mapping(input: &[u8]) -> IResult<&[u8], Mapping> {
+fn parse_mapping(input: &[u8]) -> IResult<&[u8], Mapping, ParseError> {
 	let (input, origin) = parse_point(input)?;
 	let (input, scale) = le_i32(input)?;
 
@@ -167,7 +185,7 @@ fn parse_mapping(input: &[u8]) -> IResult<&[u8], Mapping> {
 //   Int32 x  // mm
 //   Int32 y  // mm
 // }
-fn parse_point(input: &[u8]) -> IResult<&[u8], Point> {
+fn parse_point(input: &[u8]) -> IResult<&[u8], Point, ParseError> {
 	let (input, x) = le_i32(input)?;
 	let (input, y) = le_i32(input)?;
 
@@ -182,13 +200,12 @@ fn parse_point(input: &[u8]) -> IResult<&[u8], Point> {
 // 	 Point[pointCount] points // open polygon
 // 	 Byte color // black = 1, gray = 2, brown = 3, blue = 4; red = 5, green = 6, orange = 7
 // }
-fn parse_polygon(input: &[u8]) -> IResult<&[u8], Element> {
+fn parse_polygon(input: &[u8]) -> IResult<&[u8], Element, ParseError> {
 	let (input, _) = tag([0x1_u8])(input)?;
 
 	let (input, points) = length_count(le_u32, parse_point)(input)?;
 	let (input, color) = le_u8(input)?;
 
-	// TODO: remove unreachable
 	let color = match color {
 		0x1_u8 => Color::Black,
 		0x2_u8 => Color::Gray,
@@ -197,7 +214,7 @@ fn parse_polygon(input: &[u8]) -> IResult<&[u8], Element> {
 		0x5_u8 => Color::Red,
 		0x6_u8 => Color::Green,
 		0x7_u8 => Color::Orange,
-		_ => unimplemented!(),
+		invalid => return Err(nom::Err::Error(ParseError::InvalidColor(invalid))),
 	};
 
 	let polygon = Element::Polygon(Polygon {
@@ -208,7 +225,7 @@ fn parse_polygon(input: &[u8]) -> IResult<&[u8], Element> {
 	Ok((input, polygon))
 }
 
-fn parse_shots(input: &[u8]) -> IResult<&[u8], Box<[Shot]>> {
+fn parse_shots(input: &[u8]) -> IResult<&[u8], Box<[Shot]>, ParseError> {
 	length_count(le_u32, parse_shot)(input)
 		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
@@ -225,7 +242,7 @@ fn parse_shots(input: &[u8]) -> IResult<&[u8], Box<[Shot]>> {
 // 	 if (flags & 2)
 // 	   String comment
 // }
-fn parse_shot(input: &[u8]) -> IResult<&[u8], Shot> {
+fn parse_shot(input: &[u8]) -> IResult<&[u8], Shot, ParseError> {
 	let (input, from) = parse_station_id(input)?;
 	let (input, to) = parse_station_id(input)?;
 	let (input, distance) = le_i32(input)?;
@@ -262,7 +279,7 @@ fn parse_shot(input: &[u8]) -> IResult<&[u8], Shot> {
 // Id = { // station identification
 //   Int32 value  // 0x80000000: undefined, <0: plain numbers + 0x80000001, >=0: major<<16|minor
 // }
-fn parse_station_id(input: &[u8]) -> IResult<&[u8], Option<StationId>> {
+fn parse_station_id(input: &[u8]) -> IResult<&[u8], Option<StationId>, ParseError> {
 	const UNDEFINED: u32 = 0b10000000000000000000000000000000;
 
 	let (input, station_id) = le_u32(input)?;
@@ -287,15 +304,19 @@ fn parse_station_id(input: &[u8]) -> IResult<&[u8], Option<StationId>> {
 //   Byte[] length // unsigned, encoded in 7 bit chunks, little endian, bit7 set in all but the last byte
 //   Byte[length]  // UTF8 encoded, 1 to 3 bytes per character, not 0 terminated
 // }
-fn parse_string(input: &[u8]) -> IResult<&[u8], &str> {
+fn parse_string(input: &[u8]) -> IResult<&[u8], &str, ParseError> {
 	let (input, length) = parse_variable_length_little_endian_int(input)?;
-	let (input, string) = take(length)(input)?;
+	let (input, bytes) = take(length)(input)?;
 
-	// TODO:: remove unwrap
-	Ok((input, std::str::from_utf8(string).unwrap()))
+	let str = match std::str::from_utf8(bytes) {
+		Ok(str) => str,
+		Err(err) => return Err(nom::Err::Error(ParseError::from(err))),
+	};
+
+	Ok((input, str))
 }
 
-fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[Reference]>> {
+fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[Reference]>, ParseError> {
 	length_count(le_u32, parse_reference)(input)
 		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
@@ -307,7 +328,7 @@ fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[Reference]>> {
 // 	 Int32 altitude // mm above sea level
 // 	 String comment
 // }
-fn parse_reference(input: &[u8]) -> IResult<&[u8], Reference> {
+fn parse_reference(input: &[u8]) -> IResult<&[u8], Reference, ParseError> {
 	let (input, station) = parse_station_id(input)?;
 	let (input, east) = le_i64(input)?;
 	let (input, north) = le_i64(input)?;
@@ -325,7 +346,7 @@ fn parse_reference(input: &[u8]) -> IResult<&[u8], Reference> {
 	Ok((input, reference))
 }
 
-fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[Trip]>> {
+fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[Trip]>, ParseError> {
 	length_count(le_u32, parse_trip)(input)
 		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
@@ -335,7 +356,7 @@ fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[Trip]>> {
 // 	 String comment
 // 	 Int16 declination  // internal angle units (full circle = 2^16)
 // }
-fn parse_trip(input: &[u8]) -> IResult<&[u8], Trip> {
+fn parse_trip(input: &[u8]) -> IResult<&[u8], Trip, ParseError> {
 	let (input, time) = parse_datetime(input)?;
 	let (input, comment) = parse_string(input)?;
 	let (input, declination) = le_i16(input)?;
@@ -350,7 +371,7 @@ fn parse_trip(input: &[u8]) -> IResult<&[u8], Trip> {
 }
 
 // unsigned, encoded in 7 bit chunks, little endian, bit7 set in all but the last byte
-fn parse_variable_length_little_endian_int(input: &[u8]) -> IResult<&[u8], usize> {
+fn parse_variable_length_little_endian_int(input: &[u8]) -> IResult<&[u8], usize, ParseError> {
 	const BIT_7_SET: u8 = 0b10000000;
 
 	let (input, bytes) = take_while(|byte| byte & BIT_7_SET == BIT_7_SET)(input)?;
@@ -391,7 +412,7 @@ mod test {
 		let result = parse(&contents);
 
 		let error = result.expect_err("expected `ParserError`");
-		assert_eq!(error, ParserError::InvalidHeader(&[b'T', b'O', b'P']));
+		assert_eq!(error, ParseError::InvalidHeader(&[b'T', b'O', b'P']));
 
 		assert_eq!(error.to_string(), "invalid header: [84, 79, 80]");
 	}
@@ -402,7 +423,7 @@ mod test {
 		let result = parse(&contents);
 
 		let error = result.expect_err("expected `ParserError`");
-		assert_eq!(error, ParserError::UnsupportedVersion(0x2));
+		assert_eq!(error, ParseError::UnsupportedVersion(0x2));
 
 		assert_eq!(error.to_string(), "unsupported version: 2");
 	}
