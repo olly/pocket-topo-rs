@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use chrono::NaiveDate;
-use pocket_topo::{parser, Shot, ShotFlags, StationId, Trip};
+use pocket_topo::{parser, Reference, Shot, ShotFlags, StationId, Trip};
 
 #[test]
 fn parses_default() {
@@ -134,6 +134,42 @@ fn parses_trips() {
 	assert_eq!(trip.declination, 628); // 3.45 deg
 
 	assert!(trips.next().is_none());
+}
+
+#[test]
+fn parses_references() {
+	let contents = fixture("references.top");
+
+	let document = parser::parse(&contents).expect("invalid document");
+
+	// References
+	let mut references = document.references.iter();
+	assert_eq!(references.len(), 3);
+
+	let mut reference: &Reference;
+
+	reference = references.next().unwrap();
+	assert_eq!(reference.station, None);
+	assert_eq!(reference.east, 24000);
+	assert_eq!(reference.north, 42000);
+	assert_eq!(reference.altitude, 50000);
+	assert_eq!(reference.comment, "");
+
+	reference = references.next().unwrap();
+	assert_eq!(reference.station, Some(StationId::MajorMinor(1, 0)));
+	assert_eq!(reference.east, 12340);
+	assert_eq!(reference.north, 56780);
+	assert_eq!(reference.altitude, 90120);
+	assert_eq!(reference.comment, "Comment //2\r\n");
+
+	reference = references.next().unwrap();
+	assert_eq!(reference.station, None);
+	assert_eq!(reference.east, 0);
+	assert_eq!(reference.north, 0);
+	assert_eq!(reference.altitude, -2147483648);
+	assert_eq!(reference.comment, "");
+
+	assert!(references.next().is_none());
 }
 
 fn fixture(fixture: &str) -> Vec<u8> {

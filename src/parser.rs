@@ -7,11 +7,11 @@ use nom::{
 };
 use thiserror::Error;
 
-use crate::{Shot, ShotFlags, StationId, Trip};
+use crate::{Reference, Shot, ShotFlags, StationId, Trip};
 
 #[derive(Debug)]
 pub struct Document<'a> {
-	pub references: Box<[()]>,
+	pub references: Box<[Reference<'a>]>,
 	pub shots: Box<[Shot<'a>]>,
 	pub trips: Box<[Trip<'a>]>,
 }
@@ -213,7 +213,7 @@ fn parse_string(input: &[u8]) -> IResult<&[u8], &str> {
 	Ok((input, std::str::from_utf8(string).unwrap()))
 }
 
-fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[()]>> {
+fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[Reference]>> {
 	length_count(le_u32, parse_reference)(input)
 		.map(|(input, collection)| (input, collection.into_boxed_slice()))
 }
@@ -225,14 +225,22 @@ fn parse_references(input: &[u8]) -> IResult<&[u8], Box<[()]>> {
 // 	 Int32 altitude // mm above sea level
 // 	 String comment
 // }
-fn parse_reference(input: &[u8]) -> IResult<&[u8], ()> {
-	let (input, _station) = le_i32(input)?;
-	let (input, _east) = le_i64(input)?;
-	let (input, _north) = le_i64(input)?;
-	let (input, _altitude) = le_i32(input)?;
-	let (input, _comment) = parse_string(input)?;
+fn parse_reference(input: &[u8]) -> IResult<&[u8], Reference> {
+	let (input, station) = parse_station_id(input)?;
+	let (input, east) = le_i64(input)?;
+	let (input, north) = le_i64(input)?;
+	let (input, altitude) = le_i32(input)?;
+	let (input, comment) = parse_string(input)?;
 
-	Ok((input, ()))
+	let reference = Reference {
+		station,
+		east,
+		north,
+		altitude,
+		comment,
+	};
+
+	Ok((input, reference))
 }
 
 fn parse_trips(input: &[u8]) -> IResult<&[u8], Box<[Trip]>> {

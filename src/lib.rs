@@ -4,6 +4,15 @@ use bitflags::bitflags;
 use chrono::NaiveDateTime;
 
 #[derive(Debug)]
+pub struct Reference<'a> {
+	pub station: Option<StationId>,
+	pub east: i64,     // mm
+	pub north: i64,    // mm
+	pub altitude: i32, // mm above sea level
+	pub comment: &'a str,
+}
+
+#[derive(Debug)]
 pub struct Shot<'a> {
 	pub from: Option<StationId>,
 	pub to: Option<StationId>,
